@@ -1,0 +1,33 @@
+name: Rebuild Forecast Dashboard
+
+on:
+  push:
+    paths:
+      - 'data/**'        # triggers when any file in data/ is changed
+  workflow_dispatch:     # allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build dashboard
+        run: python build.py
+
+      - name: Commit updated dashboard
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/index.html
+          git diff --staged --quiet || git commit -m "Rebuild dashboard [skip ci]"
+          git push

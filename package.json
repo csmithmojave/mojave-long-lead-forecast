@@ -1,0 +1,11 @@
+{
+  "name": "mojave-long-lead-forecast",
+  "version": "1.0.0",
+  "description": "Mojave HVAC long lead time parts forecast dashboard",
+  "dependencies": {
+    "serve": "^14.0.0"
+  },
+  "scripts": {
+    "start": "serve output -l $PORT"
+  }
+}

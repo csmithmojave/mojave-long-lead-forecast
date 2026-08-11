@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mojave HVAC — Long Lead Forecast</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b;font-size:13px}
+.topbar{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.topbar h1{font-size:17px;font-weight:700}
+.topbar .sub{font-size:11px;opacity:.8;margin-top:3px}
+.topbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.topbar-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+.topbar-btn:hover{background:rgba(255,255,255,.25)}
+.topbar-btn.green{background:#16a34a;border-color:#16a34a}
+.topbar-btn.green:hover{background:#15803d}
+/* Upload panel */
+.upload-panel{display:none;background:#1e3a8a;border-top:1px solid rgba(255,255,255,.15);padding:16px 20px}
+.upload-panel.open{display:block}
+.upload-panel h3{color:#fff;font-size:13px;font-weight:600;margin-bottom:12px;opacity:.9}
+.drop-zone{border:2px dashed rgba(255,255,255,.4);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;background:rgba(255,255,255,.05)}
+.drop-zone.drag-over{border-color:#60a5fa;background:rgba(96,165,250,.15)}
+.drop-zone input[type=file]{display:none}
+.drop-zone-label{color:rgba(255,255,255,.8);font-size:13px;line-height:1.6}
+.drop-zone-label strong{color:#fff;display:block;font-size:15px;margin-bottom:4px}
+.drop-zone-label span{font-size:11px;opacity:.6}
+.file-status-list{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.file-status{background:rgba(255,255,255,.08);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:10px;font-size:12px;color:#fff}
+.file-status .fs-icon{font-size:16px;flex-shrink:0}
+.file-status .fs-name{flex:1;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-status .fs-type{background:rgba(255,255,255,.15);border-radius:3px;padding:1px 7px;font-size:10px;font-weight:700;text-transform:uppercase;flex-shrink:0}
+.file-status .fs-state{font-size:11px;opacity:.7;flex-shrink:0}
+.file-status.success .fs-icon::after{content:"✅"}
+.file-status.error .fs-icon::after{content:"❌"}
+.file-status.processing .fs-icon::after{content:"⏳"}
+.file-status.pending .fs-icon::after{content:"📄"}
+/* New parts alert */
+.new-parts-alert{margin-top:12px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:12px 14px;color:#fef9c3;display:none}
+.new-parts-alert.visible{display:block}
+.new-parts-alert h4{font-size:13px;font-weight:700;margin-bottom:6px;color:#fde047}
+.new-parts-alert ul{list-style:none;max-height:160px;overflow-y:auto;font-size:11px;opacity:.9;line-height:1.7}
+.new-parts-alert ul li{border-bottom:1px solid rgba(255,255,255,.08);padding:2px 0}
+.add-new-btn{margin-top:8px;background:#d97706;border:none;color:#fff;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700}
+.add-new-btn:hover{background:#b45309}
+.process-btn{margin-top:14px;background:#2563eb;border:none;color:#fff;padding:9px 22px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;width:100%;transition:all .2s;display:none}
+.process-btn:hover{background:#1d4ed8}
+.process-btn.visible{display:block}
+/* Tabs */
+.tabs{display:flex;flex-wrap:wrap;gap:4px;padding:10px 16px;background:#fff;border-bottom:2px solid #e2e8f0}
+.tab{padding:7px 16px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;color:#475569;transition:all .15s}
+.tab:hover{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}
+.tab.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff;font-weight:700}
+.tab.warn{border-color:#fca5a5}.tab.warn.active{background:#dc2626;border-color:#dc2626}
+.tab.missing-tab{border-color:#f59e0b;color:#92400e;background:#fffbeb}
+.tab.missing-tab.active{background:#d97706;border-color:#d97706;color:#fff}
+.panel{display:none;padding:16px}.panel.active{display:block}
+.panel-stats{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.stat{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px}
+.stat-lbl{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px}
+.stat-val{font-size:21px;font-weight:700;margin-top:1px}
+.badge-short{background:#fee2e2;color:#dc2626;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700}
+.badge-ok{background:#dcfce7;color:#16a34a;border-radius:4px;padding:3px 10px;font-size:12px;font-weight:700}
+.note{font-size:11px;color:#64748b;background:#fef9c3;border-left:3px solid #fbbf24;padding:5px 10px;border-radius:3px;margin-bottom:10px}
+.table-toolbar{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+.sort-select{background:#ede9fe;border:1px solid #a78bfa;color:#5b21b6;padding:4px 8px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer}
+.sort-select:focus{outline:none;border-color:#7c3aed}
+.toolbar-btn{background:#6d28d9;border:none;color:#fff;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s}
+.toolbar-btn:hover{background:#5b21b6}.restore-btn{background:#0284c7}.restore-btn:hover{background:#0369a1}
+table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);border:1px solid #a78bfa}
+th{background:#f1f5f9;border:1px solid #a78bfa;padding:4px 5px;font-weight:600;color:#374151;white-space:nowrap;text-align:center}
+th.col-part,th.col-desc,th.col-comm{text-align:left}
+th.col-del{width:24px;min-width:24px;border:1px solid #a78bfa}
+.col-part{width:72px;min-width:72px}
+.col-desc{width:175px;min-width:120px;max-width:175px}
+.col-comm{width:95px;min-width:95px}
+.fcst-head{width:42px;min-width:42px}
+.col-ftot{width:48px;min-width:48px}
+.col-sched{width:50px;min-width:50px}
+.col-manual{width:56px;min-width:56px}
+.manual-input{width:48px;border:1px solid #a78bfa;border-radius:3px;padding:2px 4px;text-align:right;font-size:12px;background:#faf5ff;color:#5b21b6;font-weight:600}
+.manual-input:focus{outline:none;border-color:#7c3aed;background:#ede9fe}
+.col-dem{width:50px;min-width:50px}
+.col-qoh{width:38px;min-width:38px}
+.col-qord{width:42px;min-width:42px}
+.col-surp{width:58px;min-width:58px}
+td{border:1px solid #c4b5fd;padding:4px 5px;vertical-align:middle}
+.del-cell{text-align:center;width:28px;padding:2px}
+.del-btn{background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;font-weight:700;padding:2px 5px;border-radius:3px;opacity:.5;transition:opacity .15s}
+.del-btn:hover{opacity:1;background:#fee2e2}
+.comm-cell{color:#92400e;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-head{background:#bfdbfe;color:#1e40af;font-weight:700;border-bottom:1px solid #93c5fd}
+.fcst-head{background:#dbeafe;color:#1e40af;font-size:11px;text-align:right}
+.fcst-cell{text-align:right;background:#f0f6ff}.fcst-cell.zero{color:#cbd5e1}
+.total-fcst{text-align:right;font-weight:700;background:#dbeafe;border-left:2px solid #93c5fd;white-space:nowrap}
+.sched-cell{text-align:right;color:#d97706;font-weight:600;white-space:nowrap}
+.dem-total{text-align:right;font-weight:800;background:#ede9fe;border-left:2px solid #a78bfa;color:#5b21b6;white-space:nowrap}
+.num{text-align:right;white-space:nowrap}.zero{color:#cbd5e1}
+.part-num{color:#1d4ed8;font-weight:600;white-space:nowrap}
+.desc-cell{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.surplus-val{color:#16a34a;font-weight:700;text-align:right;white-space:nowrap}
+.shortage-val{color:#dc2626;font-weight:800;text-align:right;white-space:nowrap}
+tr:nth-child(odd) td{background:#f5f0ff}
+tr:nth-child(even) td{background:#f0fff4}
+tr:hover td{background:#ddd6fe!important}
+tr.shortage td{background:#ffe4e4!important}
+tr.shortage:hover td{background:#fecaca!important}
+tr.totals-row td{background:#e0f2fe!important;font-weight:700;color:#0c4a6e;border-top:2px solid #2563eb;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+.total-row-num{text-align:right}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <h1>Mojave HVAC — Long Lead Parts Forecast</h1>
+    <div class="sub">Lead time &gt; 59 days &nbsp;|&nbsp; <span id="range-subtitle">120-day window</span></div>
+  </div>
+  <div class="topbar-right">
+    <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-radius:7px;padding:5px 10px">
+      <span style="color:rgba(255,255,255,.8);font-size:11px;font-weight:600;white-space:nowrap">Start</span>
+      <input type="date" id="range-start" style="background:rgba(255,255,255,.9);border:none;border-radius:4px;padding:3px 6px;font-size:12px;color:#1e3a8a;font-weight:600;cursor:pointer" onchange="applyDateRange()">
+      <span style="color:rgba(255,255,255,.8);font-size:11px;font-weight:600;white-space:nowrap">Days</span>
+      <input type="number" id="range-days" min="30" max="365" step="30" style="width:52px;background:rgba(255,255,255,.9);border:none;border-radius:4px;padding:3px 6px;font-size:12px;color:#1e3a8a;font-weight:600;text-align:center" onchange="applyDateRange()">
+    </div>
+    <button class="topbar-btn green" onclick="downloadAllCSV()">⬇ Download All CSV</button>
+    <button class="topbar-btn" onclick="toggleUpload()" id="upload-toggle-btn">⬆ Upload Files</button>
+    <button class="topbar-btn" onclick="location.reload()">↻ Refresh</button>
+  </div>
+</div>
+
+<div class="upload-panel" id="upload-panel">
+  <h3>Drop updated data files — auto-detected by filename</h3>
+  <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+       ondragover="event.preventDefault();this.classList.add('drag-over')"
+       ondragleave="this.classList.remove('drag-over')"
+       ondrop="handleDrop(event)">
+    <input type="file" id="file-input" multiple accept=".csv,.xlsx" onchange="handleFiles(this.files)">
+    <div class="drop-zone-label">
+      <strong>Drop files here or click to browse</strong>
+      Accepts: <b>Items CSV</b> &nbsp;·&nbsp; <b>CRM XLSX</b> &nbsp;·&nbsp; <b>Planning Detail CSV</b>
+      <span>Files are identified automatically by name</span>
+    </div>
+  </div>
+  <div class="file-status-list" id="file-status-list"></div>
+  <div class="new-parts-alert" id="new-parts-alert">
+    <h4 id="new-parts-title">🆕 New parts found</h4>
+    <ul id="new-parts-list"></ul>
+    <button class="add-new-btn" onclick="addNewParts()">+ Add All to Dashboard</button>
+  </div>
+  <button class="process-btn" id="process-btn" onclick="processAllFiles()">⚡ Update Dashboard</button>
+</div>
+
+<div class="tabs"><button class="tab active warn" onclick="showTab('compressor')" id="tab-compressor">Compressor</button>
+<button class="tab warn" onclick="showTab('fans')" id="tab-fans">Fans</button>
+<button class="tab warn" onclick="showTab('evaporator-coils')" id="tab-evaporator-coils">Evaporator Coils</button>
+<button class="tab" onclick="showTab('micro-channel-coils')" id="tab-micro-channel-coils">Micro Channel Coils</button>
+<button class="tab" onclick="showTab('liquid-desiccant')" id="tab-liquid-desiccant">Liquid Desiccant</button>
+<button class="tab warn" onclick="showTab('vfd')" id="tab-vfd">VFD</button>
+<button class="tab missing-tab" onclick="showTab('missing-commodity')" id="tab-missing-commodity">Missing Commodity</button>
+</div>
+<div id="panel-compressor" class="panel active">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-compressor">10</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-compressor">55.37</div></div>
+    <div class="stat" id="stat-badge-compressor"><span class="badge-short">1 shortage</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('compressor','Compressor')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('compressor')" style="display:none" id="restore-compressor">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-compressor">
+<table id="tbl-compressor">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-fans" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-fans">22</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-fans">179.15</div></div>
+    <div class="stat" id="stat-badge-fans"><span class="badge-short">5 shortages</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('fans','Fans')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('fans')" style="display:none" id="restore-fans">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-fans">
+<table id="tbl-fans">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-evaporator-coils" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-evaporator-coils">27</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-evaporator-coils">84.20</div></div>
+    <div class="stat" id="stat-badge-evaporator-coils"><span class="badge-short">8 shortages</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('evaporator-coils','Evaporator Coils')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('evaporator-coils')" style="display:none" id="restore-evaporator-coils">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-evaporator-coils">
+<table id="tbl-evaporator-coils">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-micro-channel-coils" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-micro-channel-coils">6</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-micro-channel-coils">136.33</div></div>
+    <div class="stat" id="stat-badge-micro-channel-coils"><span class="badge-ok">No shortages</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('micro-channel-coils','Micro Channel Coils')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('micro-channel-coils')" style="display:none" id="restore-micro-channel-coils">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-micro-channel-coils">
+<table id="tbl-micro-channel-coils">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-liquid-desiccant" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-liquid-desiccant">7</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-liquid-desiccant">974.25</div></div>
+    <div class="stat" id="stat-badge-liquid-desiccant"><span class="badge-ok">No shortages</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('liquid-desiccant','Liquid Desiccant')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('liquid-desiccant')" style="display:none" id="restore-liquid-desiccant">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-liquid-desiccant">
+<table id="tbl-liquid-desiccant">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-manual" style="background:#ede9fe;color:#5b21b6;font-size:11px">Manual<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-vfd" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-vfd">9</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-vfd">45.37</div></div>
+    <div class="stat" id="stat-badge-vfd"><span class="badge-short">1 shortage</span></div>
+  </div>
+  <div class="note">🔴 Shortage = 120-Day Demand exceeds QOH + Qty Ordered &nbsp;|&nbsp; Lead time &gt; 59 days</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('vfd','VFD')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('vfd')" style="display:none" id="restore-vfd">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-vfd">
+<table id="tbl-vfd">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+<div id="panel-missing-commodity" class="panel">
+  <div class="panel-stats">
+    <div class="stat"><div class="stat-lbl">Parts</div><div class="stat-val" id="stat-parts-missing-commodity">160</div></div>
+    <div class="stat"><div class="stat-lbl">120-Day Total Demand</div><div class="stat-val" id="stat-dem-missing-commodity">427</div></div>
+    <div class="stat" id="stat-badge-missing-commodity"><span class="badge-ok">No shortages</span></div>
+  </div>
+  <div class="note">⚠️ Parts below have lead time &gt; 59 days but no recognized commodity — assign them in ERP to move to the correct tab</div>
+  <div class="table-toolbar">
+  <button class="toolbar-btn" onclick="downloadCSV('missing-commodity','Missing Commodity')">⬇ Download CSV</button>
+  <button class="toolbar-btn restore-btn" onclick="restoreRows('missing-commodity')" style="display:none" id="restore-missing-commodity">↩ Restore Hidden</button>
+</div>
+<div style="overflow-x:auto" id="tbl-wrap-missing-commodity">
+<table id="tbl-missing-commodity">
+<thead>
+  <tr>
+    <th rowspan="2" class="col-del"></th>
+    <th rowspan="2" class="col-part">Part #</th>
+    <th rowspan="2" class="col-desc">Description</th>
+    <th rowspan="2" class="col-comm">Commodity</th>
+    <th colspan="5" class="group-head">Forecast Demand</th>
+    <th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>
+    <th rowspan="2" class="col-sched">Scheduled<br>Demand</th>
+    <th rowspan="2" class="col-dem">120-Day<br>Demand</th>
+    <th rowspan="2" class="col-qoh">QOH</th>
+    <th rowspan="2" class="col-qord">Qty<br>Ordered</th>
+    <th rowspan="2" class="col-surp">Surplus /<br>(Short)</th>
+  </tr>
+  <tr><th class="fcst-head">Jun-26</th><th class="fcst-head">Jul-26</th><th class="fcst-head">Aug-26</th><th class="fcst-head">Sep-26</th><th class="fcst-head">Oct-26</th></tr>
+</thead>
+<tbody></tbody>
+</table></div>
+</div>
+
+
+<script>
+var DASH = { periods:["7-2026","8-2026","9-2026","10-2026","11-2026","12-2026","1-2027","2-2027","3-2027","4-2027","5-2027","6-2027","7-2027","8-2027","9-2027"], showIdx:[0,1,2,3,4],
+parts:[{item:"10000538",desc:"FUSE, CLASS J, TIME DELAY, 4A, 600VAC",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:20.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000539",desc:"FUSE, CLASS J, TIME DELAY, 4.5A, 600VAC",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:10.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000574",desc:"VFD, YASKAWA 240V, 1.5HP, 3PH",commodity:"VFD",raw_commodity:"VFD",lt:60.0,qoh:5.0,qord:0.0,alloc:0.0,ss:4.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000580",desc:"VFD, YASKAWA 460V, 1HP, 3PH",commodity:"Missing Commodity",raw_commodity:"Motors",lt:60.0,qoh:10.0,qord:0.0,alloc:2.0,ss:4.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:3.0},{item:"10000586",desc:"VFD, 230V, COPELAND EVM-322048-E20ENN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:6.0,qord:0.0,alloc:0.0,ss:2.0,forecast_values:[0.0,0.2,0.7,0.3,1.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000587",desc:"VFD, 230V, COPELAND EVM-322062-E20ENN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:8.0,qord:1.0,alloc:0.0,ss:4.0,forecast_values:[0.0,1.3,0.75,0.0,0.0,1.05,0.0,0.0,0.3,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:3.0},{item:"10000589",desc:"VFD, 230V, COPELAND EVH-322143-R21BDN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000590",desc:"VFD, 460V, COPELAND EVM-344023-E20ENN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:4.0,qord:4.0,alloc:1.0,ss:2.0,forecast_values:[0.75,0.3,0.4,1.6,3.5,0.75,2.5,1.2,0.0,0.99,0.0,0.4,1.7999999999999998,0.0,0.0],sched_demand:0.0},{item:"10000591",desc:"VFD, 460V, COPELAND EVM-344031-E20ENN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:11.0,qord:0.0,alloc:2.0,ss:6.0,forecast_values:[1.05,1.25,0.9,0.5,0.5,1.6,0.3,0.4,0.1,1.98,0.0,0.7,0.0,0.0,0.1],sched_demand:0.0},{item:"10000593",desc:"VFD, 460V, COPELAND EVH-344072-R21BDN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10000620",desc:"PLC, CONTROLLER, CAREL P+500SEB06EM0",commodity:"Missing Commodity",raw_commodity:"Control Relay",lt:60.0,qoh:25.0,qord:44.0,alloc:7.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:12.0},{item:"10000621",desc:"PLC, ULTRACAP, CAREL PCOS00UC20",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:11.0,qord:64.0,alloc:7.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:12.0},{item:"10000622",desc:"PLC, CONNECTOR KIT, CAREL P+50CON020",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:21.0,qord:59.0,alloc:8.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:12.0},{item:"10000623",desc:"PLC, EXP MODULE CAREL P+E0000000000",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:16.0,qord:73.0,alloc:10.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:15.0},{item:"10000624",desc:"PLC, TERMINAL KIT, CAREL P+D0CON0B0",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:29.0,qord:54.0,alloc:10.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:15.0},{item:"10000626",desc:"PLC, HMI, CAREL PGR07000WCAB0",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:18.0,qord:54.0,alloc:6.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:6.0},{item:"10000627",desc:"PLC, HMI MOUNTING CASE, CAREL PGTA00SM70",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:21.0,qord:54.0,alloc:6.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:6.0},{item:"10000628",desc:"PLC, HMI BEZEL, CAREL PGTA00FT30",commodity:"Missing Commodity",raw_commodity:"PLC",lt:60.0,qoh:21.0,qord:54.0,alloc:6.0,ss:10.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:6.0},{item:"10000776",desc:"LITHIUM CHLORIDE SALT",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:80.0,qoh:1428.414,qord:1000.0,alloc:630.748,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:991.266},{item:"10001193",desc:"GB203 GROUND BAR 225 A",commodity:"Missing Commodity",raw_commodity:"Cable & Wire",lt:60.0,qoh:22.0,qord:0.0,alloc:8.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:12.0},{item:"10001258",desc:"VFD, 230V, COPELAND EVH-322114-R21BDN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:5.0,qord:0.0,alloc:0.0,ss:5.0,forecast_values:[1.98,1.2999999999999998,0.7999999999999999,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"10001259",desc:"VFD, 460V, COPELAND EVH-344061-R21BDN",commodity:"VFD",raw_commodity:"VFD",lt:90.0,qoh:21.0,qord:7.0,alloc:4.0,ss:10.0,forecast_values:[3.0,1.4500000000000002,1.8000000000000003,7.1,1.5999999999999999,3.3,0.1,0.0,0.0,0.0,0.3,0.2,0.0,0.0,0.1],sched_demand:7.0},{item:"10001486",desc:"PLC, EVD MODULE, CAREL EVD0000E20",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"10001491",desc:"4-WAY VALVE COIL, 24V, STF-01AB520UA1",commodity:"Missing Commodity",raw_commodity:"Valves",lt:90.0,qoh:147.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000178",desc:"PANEL B, FLOOR 1, 4, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000179",desc:"PANEL B, FLOOR 2, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000180",desc:"PANEL B, FLOOR 2, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000182",desc:"PANEL B, FLOOR 2, 4, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000183",desc:"PANEL B, CEILING, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:8.0,qord:0.0,alloc:6.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000187",desc:"PANEL B, FRONT 1, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000188",desc:"PANEL B, FRONT 1, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:14.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000194",desc:"PANEL B, RIGHT 1, 4, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000197",desc:"PANEL B, BACK 1, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000198",desc:"PANEL B, BACK 1, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000199",desc:"PANEL B, BACK 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000200",desc:"PANEL B, BACK LARGE, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:5.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000201",desc:"PANEL B, LARGE ACCESS, VC, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000204",desc:"PANEL B, LEFT 1, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000205",desc:"PANEL B, LEFT 1, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000206",desc:"PANEL B, LEFT 1, 3, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000208",desc:"PANEL B, MID RIGHT, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000209",desc:"PANEL B, MID LEFT, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000210",desc:"PANEL B, MID LEFT 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000211",desc:"PANEL B, HEATER, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:5.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000213",desc:"PANEL B, VAPOR COMPRESSION 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000214",desc:"PANEL B, VAPOR COMPRESSION 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000215",desc:"PANEL B, ELECTRICAL, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000390",desc:"PANEL A, RIGHT, 4, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:17.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000396-H",desc:"PANEL A, VAPOR COMPRESSION, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:5.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000403",desc:"PANEL A, FAN, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000411",desc:"PANEL A, ELECTRICAL HIGH VOLTAGE, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-000414",desc:"PANEL A, RIGHT, 4, DOOR, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001153",desc:"PANEL B, FLOOR 1, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:5.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001154",desc:"PANEL B, FLOOR 1, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:10.0,qord:0.0,alloc:6.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001155",desc:"PANEL B, CEILING, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:8.0,qord:0.0,alloc:6.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001157",desc:"PANEL B, RIGHT 1, 1, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001158",desc:"PANEL B, RIGHT 1, 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001159",desc:"PANEL B, RIGHT 1, 3, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:17.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001160",desc:"PANEL B, RIGHT 2, EDGE, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:7.0,qord:0.0,alloc:6.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001161",desc:"PANEL B, RIGHT 2, HORIZONTAL, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:8.0,qord:0.0,alloc:6.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001162",desc:"PANEL B, RIGHT 2, MIDDLE, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001163",desc:"PANEL B, LEFT 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001164",desc:"PANEL B, FAN, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-001277",desc:"PANEL B, FLOOR 2, 3, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-002052",desc:"ERV A, FRONT 2, A",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-002053",desc:"ERV A, FRONT 1, A",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-002144",desc:"PANEL B, FRONT 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-002644",desc:"PANEL B, MID RIGHT 2, P",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:4.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-002855",desc:"ADB, FAN ECM, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:5.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003004",desc:"ADB, HEATER, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:7.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003433",desc:"ADA, BACK 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003434",desc:"ADA BACK 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003436",desc:"ADA, CEILING 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:11.0,qord:29.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003437",desc:"ADA, CEILING 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:11.0,qord:29.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003439",desc:"ADA, EP 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003440",desc:"ADA, EP 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003441",desc:"ADA, EP H3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003442",desc:"ADA, EP 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003443",desc:"ADA, EP H5, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003444",desc:"ADA, FAN ECM, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003446",desc:"ADA, FLOOR 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003448",desc:"ADA, FLOOR 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:11.0,qord:29.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003450",desc:"ADA, FLOOR 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"A-003451",desc:"ADA, FRONT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003452",desc:"ADA, FRONT H2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003453",desc:"ADA, FRONT H3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003455",desc:"ADA, LEFT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003456",desc:"ADA, LEFT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003458",desc:"ADA, LEFT 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:12.0,qord:48.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003459",desc:"ADA, MID 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003460",desc:"ADA, MID 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003461",desc:"ADA, MID 3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003462",desc:"ADA, RIGHT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003463",desc:"ADA, RIGHT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003464",desc:"ADA, RIGHT 3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003465",desc:"ADA, RIGHT 5, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003467",desc:"ADA, VC 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003468",desc:"ADA, VC 3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:11.0,qord:29.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003469",desc:"ADA, VC 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003470",desc:"ADA, VC H5, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003471",desc:"ADA, VC H6, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003472",desc:"ADB, 1BACK 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:2.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003473",desc:"ADB, 1BACK 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003476",desc:"ADB, 1FLOOR 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003477",desc:"ADB, 1FLOOR 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:12.0,qord:70.0,alloc:4.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:20.0},{item:"A-003478",desc:"ADB, 1FLOOR 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003479",desc:"ADB, 1FRONT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003480",desc:"ADB, 1FRONT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003481",desc:"ADB, 1LEFT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003482",desc:"ADB, 1LEFT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003483",desc:"ADB, 1LEFT 3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003484",desc:"ADB, 1MIDLEFT, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003485",desc:"ADB, 1MIDRIGHT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003486",desc:"ADB, 1MIDRIGHT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003487",desc:"ADB, 1RIGHT 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003488",desc:"ADB, 1RIGHT 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003489",desc:"ADB, 1RIGHT 4, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003490",desc:"ADB, 2FLOOR 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003491",desc:"ADB, 2BACK, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003493",desc:"ADB, 2FLOOR 3, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:12.0,qord:70.0,alloc:4.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:20.0},{item:"A-003494",desc:"ADB, 2FRONT, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003495",desc:"ADB, 2LEFT, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003496",desc:"ADB, 2MIDLEFT, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003497",desc:"ADB, 2RIGHT EDGE, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:12.0,qord:70.0,alloc:4.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:20.0},{item:"A-003498",desc:"ADB, 2RIGHT HOR, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:12.0,qord:70.0,alloc:4.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:20.0},{item:"A-003499",desc:"ADB, 2RIGHT MID, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:2.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003502",desc:"ADB, BACK LARGE, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003503",desc:"ADB, CEILING 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:30.0,qord:55.0,alloc:10.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:50.0},{item:"A-003506",desc:"ADB, EP, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003507",desc:"ADB, FAN ECM, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003509",desc:"ADB, VC 1, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:2.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003510",desc:"ADB, VC 2, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003511",desc:"ADB, VC ACC, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"A-003686",desc:"ADA, HEATER, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:14.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-003852",desc:"ADB, HEATER, FILLED, A",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:6.0,qord:35.0,alloc:3.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:12.0},{item:"A-T00382-BD",desc:"PANEL WITH TRIM A, FLOOR, 4, BD, A",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"A-T00389",desc:"PANEL WITH TRIM A, RIGHT, 2, A",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000028",desc:"PLENUM FAN 20\", DPL20DC 3HP 1800RPM",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000029",desc:"REGEN FAN, 20\" CANARM, SHROUD, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:4.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000326",desc:"30 IN EXCOND FAN, 1.5HP 1200RPM",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000411",desc:"ADA, DOOR, ELECTRICAL HIGH VOLTAGE, P",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000414",desc:"ADA, DOOR, HEATER, P",commodity:"Missing Commodity",raw_commodity:"",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000556",desc:"REGEN A, MICROCHANNEL COIL",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:13.0,qord:10.0,alloc:1.0,ss:2.0,forecast_values:[3.99,4.800000000000001,1.9000000000000001,3.0,5.8,2.1,2.8,1.5,0.3,0.99,0.0,1.0999999999999999,1.7999999999999998,0.0,0.1],sched_demand:2.0},{item:"P-000591",desc:"GAS HEATER EXHAUST HOOD, TOP, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000592",desc:"GAS HEATER EXHAUST HOOD, RIGHT, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000593",desc:"GAS HEATER EXHAUST HOOD, LEFT, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000596",desc:"MEDIA 12Dx12WX60H,KUUL,FIREPRO 15/45",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:58.0,qord:64.0,alloc:2.0,ss:16.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:52.0},{item:"P-000600",desc:"MEDIA, FIREPRO, 2Dx12WX60H, P",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:80.0,qord:96.0,alloc:4.5,ss:48.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:122.5},{item:"P-000720",desc:"PLENUM FAN 16\", DPL16DP 1HP 1800RPM",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000772",desc:"PL20_QTY2",commodity:"Missing Commodity",raw_commodity:"Foam Panels",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000807",desc:"EXCOND, MICROCHANNEL COIL",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:10.0,qord:160.0,alloc:11.0,ss:6.0,forecast_values:[6.78,5.800000000000001,5.3500000000000005,9.499999999999998,6.8,6.7,2.9,1.5,0.4,2.9699999999999998,0.3,1.3,1.7999999999999998,0.0,0.2],sched_demand:30.0},{item:"P-000819",desc:"REGEN B, MICROCHANNEL COIL",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:7.0,qord:70.0,alloc:5.0,ss:3.0,forecast_values:[5.28,5.199999999999999,3.9500000000000006,8.899999999999999,2.2,4.9,0.1,0.0,0.1,1.98,0.3,0.2,0.0,0.0,0.1],sched_demand:14.0},{item:"P-000821",desc:"COMPRESSOR, 20T, 2XXV, YAV0661E-5X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:2.0,qord:1.0,alloc:0.0,ss:2.0,forecast_values:[0.0,0.2,0.7,0.3,1.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000822",desc:"COMPRESSOR, 25T, 2XXV, YAV0961E-5X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:5.0,qord:0.0,alloc:0.0,ss:2.0,forecast_values:[0.0,1.3,0.75,0.0,0.0,1.05,0.0,0.0,0.3,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:3.0},{item:"P-000823",desc:"COMPRESSOR, 40T, 2XXV, YAV1601E-5X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:7.0,qord:0.0,alloc:0.0,ss:2.0,forecast_values:[1.98,1.2999999999999998,0.7,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"P-000824",desc:"COMPRESSOR, 20T, 460V, YAV0661E-7X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:7.0,qord:1.0,alloc:1.0,ss:6.0,forecast_values:[0.75,0.3,0.4,1.6,3.5,0.75,2.5,1.2,0.0,0.99,0.0,0.4,1.7999999999999998,0.0,0.0],sched_demand:0.0},{item:"P-000825",desc:"COMPRESSOR, 25T, 460V, YAV0961E-7X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:7.0,qord:5.0,alloc:2.0,ss:5.0,forecast_values:[1.05,1.25,0.9,0.5,0.5,1.6,0.3,0.4,0.1,1.98,0.0,0.7,0.0,0.0,0.1],sched_demand:0.0},{item:"P-000826",desc:"COMPRESSOR, 40T, 460V, YAV1601E-7X9-ERT",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:7.0,qord:5.0,alloc:0.0,ss:6.0,forecast_values:[1.5,0.5,0.8,1.3,1.0,0.3,0.0,0.0,0.0,0.0,0.3,0.0,0.0,0.0,0.1],sched_demand:3.0},{item:"P-000827",desc:"FAN, ECM, COPRA PA-C28-EF46-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:2.0,qord:0.0,alloc:0.0,ss:1.0,forecast_values:[0.75,0.0,0.0,0.0,0.9999999999999999,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000828",desc:"FAN, ECM, COPRA PA-C28-EF56-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:5.0,qord:0.0,alloc:0.0,ss:1.0,forecast_values:[0.0,0.0,0.0,0.1,0.5,0.75,1.7999999999999998,0.6,0.0,0.0,0.0,0.1,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000831",desc:"FAN, ECM, COPRA PA-C45-JM46-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:8.0,qord:0.0,alloc:0.0,ss:3.0,forecast_values:[1.98,1.2999999999999998,0.85,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"P-000832",desc:"FAN, ECM, COPRA PA-C45-JM56-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:9.0,qord:37.0,alloc:5.0,ss:4.0,forecast_values:[1.5,2.55,1.2000000000000002,2.6999999999999997,0.8999999999999999,3.0,0.0,0.0,0.1,1.98,0.3,0.2,0.0,0.0,0.1],sched_demand:6.0},{item:"P-000907",desc:"RETURN SHROUD, DOOR WALL, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:3.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000909",desc:"RETURN SHROUD, MIDDLE WALL, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-000974",desc:"CONDENSATE DRAIN PAN, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001204",desc:"ELECTRIC HEATER, HEATER SHROUD, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:11.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001376",desc:"RETURN AIR ROOF CURB ADAPTER, FRAME, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:10.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001412",desc:"RETURN SHROUD, RECIRC DAMPER, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001698",desc:"REGEN FAN, 16 IN CANARM, SHROUD, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:2.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001719",desc:"REGEN FAN, 16 IN CANARM, STAND, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001776",desc:"EXTERNAL CONDENSER FRAME, MERICA SISTER",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001784",desc:"REGEN A, MICROCHANNEL COIL, COATED",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:5.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001785",desc:"REGEN B, MICROCHANNEL COIL, COATED",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:6.0,qord:0.0,alloc:1.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"P-001786",desc:"EXCOND, MICROCHANNEL COIL, COATED",commodity:"Micro Channel Coils",raw_commodity:"Micro Channel Coils",lt:80.0,qoh:9.0,qord:0.0,alloc:2.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:4.0},{item:"P-001832",desc:"EVAP COIL ADB 25 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001878",desc:"SUPPLY AIR ROOF CURB ADAPTER A, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001953",desc:"SECONDARY, DESORBER, PAN",commodity:"Missing Commodity",raw_commodity:"Absorber / Desorber",lt:80.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-001962",desc:"PLATE, ABSORBER PUMP MOUNT",commodity:"Missing Commodity",raw_commodity:"Absorber / Desorber",lt:80.0,qoh:5.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002061",desc:"ERV A, DIVIDER SHROUD, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002062",desc:"ERV A, WHEEL WALL, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002076",desc:"ERV A, RETURN FILTER RACK, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002078",desc:"SLIDING SHELF, FILTER RACK, P",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002169",desc:"FAN, ECM, 32IN ZA, 198469 - FN080 \u2013 230V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:6.0,qord:14.0,alloc:0.0,ss:4.0,forecast_values:[1.98,1.2999999999999998,1.85,0.0,0.4,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:6.0},{item:"P-002170",desc:"FAN, ECM, 32IN ZA, 197502 - FN080 \u2013 460V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:60.0,qord:2.0,alloc:12.0,ss:12.0,forecast_values:[3.3,3.9000000000000004,2.1000000000000005,8.899999999999999,1.8000000000000003,4.8999999999999995,0.1,0.0,0.1,1.98,0.3,0.2,0.0,0.0,0.1],sched_demand:26.0},{item:"P-002172",desc:"FAN, ECM, 25IN ZA, 198667 - FN063 - 230V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:4.0,qord:8.0,alloc:0.0,ss:4.0,forecast_values:[2.49,2.2,0.7,1.2,1.7,1.05,0.0,0.0,0.3,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:4.0},{item:"P-002173",desc:"FAN, ECM, 25IN ZA, 198666 - FN063 - 460V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:8.0,qord:14.0,alloc:2.0,ss:12.0,forecast_values:[1.5,2.6,1.2,1.8000000000000003,4.1,1.05,2.8,1.6,0.0,0.99,0.0,1.0999999999999999,1.7999999999999998,0.0,0.1],sched_demand:0.0},{item:"P-002237",desc:"4 WAY VALVE, STF-25U24G",commodity:"Missing Commodity",raw_commodity:"Valves",lt:80.0,qoh:7.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002452",desc:"MEDIA, 12\"X12\"X40\", GLASDEK, 15/45",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:76.0,qord:72.0,alloc:42.0,ss:30.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:102.0},{item:"P-002453",desc:"MEDIA, 4\"X12\"X40\", GLASDEK, 15/45",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:81.0,qord:648.0,alloc:42.0,ss:30.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:102.0},{item:"P-002454",desc:"MEDIA, 12\"X12\"X60\", GLASDEK, 15/45",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:650.0,qord:1600.0,alloc:24.0,ss:30.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:16.0},{item:"P-002455",desc:"MEDIA, 2\"X12\"X60\", GLASDEK, 15/45",commodity:"Liquid Desiccant",raw_commodity:"Liquid Desiccant",lt:90.0,qoh:88.5,qord:384.0,alloc:57.0,ss:30.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:38.5},{item:"P-002457",desc:"EVAPORATOR COIL ADB 40 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:8.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[3.48,1.4,1.5,0.7,0.8999999999999999,0.3,0.0,0.0,0.0,0.0,0.3,0.0,0.0,0.0,0.1],sched_demand:5.0},{item:"P-002458",desc:"EVAPORATOR COIL ADB 25 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:1.0},{item:"P-002459",desc:"EVAPORATOR COIL ADA 20 TON/25 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:80.0,qoh:8.0,qord:0.0,alloc:1.0,ss:0.0,forecast_values:[3.99,4.800000000000001,1.9000000000000001,3.0,5.8,2.1,2.8,1.5,0.3,0.99,0.0,1.0999999999999999,1.7999999999999998,0.0,0.1],sched_demand:2.0},{item:"P-002467",desc:"COMPRESSOR, 460V, YAVU3111E-7XD-GJF",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:0.0,qord:10.0,alloc:0.0,ss:5.0,forecast_values:[1.5,0.85,1.0000000000000002,5.5,0.4,1.7999999999999998,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:3.0},{item:"P-002468",desc:"COMPRESSOR, 208V/230V, YAVU3111E-5X5-GJF",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:1.0,qord:0.0,alloc:0.0,ss:1.0,forecast_values:[0.0,0.0,0.1,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002488",desc:"EVAPORATOR COIL ADB 50 TON/60 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:80.0,qoh:5.0,qord:0.0,alloc:3.0,ss:0.0,forecast_values:[3.0,1.9,2.0000000000000004,11.600000000000001,1.0,3.5999999999999996,0.0,0.0,0.0,0.0,0.0,0.4,0.0,0.0,0.0],sched_demand:7.0},{item:"P-002535",desc:"TOP, ABSORBER CAP, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:36.0,qord:25.0,alloc:13.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:34.0},{item:"P-002536",desc:"SIDE, ABSORBER CAP, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:36.0,qord:25.0,alloc:13.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:34.0},{item:"P-002539",desc:"SIDE, MANIFOLD, ABSORBER CAP, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:39.0,qord:25.0,alloc:13.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:34.0},{item:"P-002588",desc:"COMPRESSOR, 460V, YAVU4231E-7XD-GJE",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:2.0,qord:8.0,alloc:4.0,ss:3.0,forecast_values:[0.0,0.1,0.0,0.30000000000000004,0.2,1.2000000000000002,0.1,0.0,0.0,0.0,0.0,0.2,0.0,0.0,0.0],sched_demand:7.0},{item:"P-002589",desc:"COMPRESSOR, 208V/230V, YAVU4231E-5X5-GJE",commodity:"Compressor",raw_commodity:"Compressor",lt:80.0,qoh:1.0,qord:0.0,alloc:0.0,ss:1.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002643",desc:"EVAP COIL ADB 50 TON/60 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:1.0,qord:0.0,alloc:1.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"P-002649",desc:"EVAP COIL ADA 20 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002650",desc:"EVAP COIL ADA 20 TON/25 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002651",desc:"EVAP COIL ADB 25 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002652",desc:"EVAP COIL ADB 40, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002712",desc:"FAN, ECM, 400mm ZA, 199748/A01-ADA 460V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:14.0,qord:0.0,alloc:2.0,ss:6.0,forecast_values:[0.75,1.0999999999999999,0.0,0.2,0.8,0.0,0.4,0.0,0.0,0.99,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002786",desc:"FAN, ECM, 400mm ZA, 199747/A01-ADA 230V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:2.0,qord:4.0,alloc:0.0,ss:4.0,forecast_values:[0.0,0.2,0.0,0.0,0.1,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-002787",desc:"FAN, ECM, 500mm ZA, 199749/A01-ADB 460V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:3.0,qord:35.0,alloc:1.0,ss:6.0,forecast_values:[3.3,0.8,1.0,6.299999999999999,1.5,1.5000000000000002,0.1,0.0,0.0,1.98,0.0,0.0,0.0,0.0,0.0],sched_demand:5.0},{item:"P-002788",desc:"FAN, ECM, 500mm ZA, 199750/A01-ADB 230V",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:3.0,qord:8.0,alloc:0.0,ss:4.0,forecast_values:[1.98,0.1,1.85,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:3.0},{item:"P-002958",desc:"INLET, ABSORBER CAP, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:33.0,qord:25.0,alloc:13.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:34.0},{item:"P-003005",desc:"OBS-ADA OUTDOOR COIL, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:60.0,qoh:2.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003006",desc:"OBS-ADB OUTDOOR COIL, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:60.0,qoh:3.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003021",desc:"FAN, ECM, COPRA PA-C56-LQ56-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:3.0,qord:39.0,alloc:3.0,ss:1.0,forecast_values:[1.8,1.25,0.9,6.199999999999999,0.9,1.9000000000000004,0.1,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:10.0},{item:"P-003025",desc:"FAN, ECM, COPRA PA-C56-JV46-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:1.0,forecast_values:[0.0,0.0,1.0,0.0,0.4,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:1.0},{item:"P-003030",desc:"FAN, ECM, COPRA PA-C40-JJ56-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:6.0,qord:6.0,alloc:2.0,ss:2.0,forecast_values:[1.5,2.5999999999999996,1.2000000000000002,1.7,3.6,0.3,1.0,1.0,0.0,0.99,0.0,0.9999999999999999,1.7999999999999998,0.0,0.1],sched_demand:0.0},{item:"P-003031",desc:"FAN, ECM, COPRA PA-C40-JJ46-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:3.0,qord:10.0,alloc:0.0,ss:3.0,forecast_values:[1.74,2.2,0.7,1.2,0.7,1.05,0.0,0.0,0.3,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:2.0},{item:"P-003197",desc:"4 WAY VALVE, STF-30U16G",commodity:"Missing Commodity",raw_commodity:"Valves",lt:80.0,qoh:6.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003201",desc:"4 WAY VALVE, STF-20U11G",commodity:"Missing Commodity",raw_commodity:"Valves",lt:80.0,qoh:5.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003208",desc:"FAN, ECM, COPRA PA-C56-JV56-C0000",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:1.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003659",desc:"SECONDARY, DESORBER, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003687",desc:"PIPE, ELBOW, 1/2IN, 6.5IN, P",commodity:"Missing Commodity",raw_commodity:"",lt:80.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003998",desc:"EVAPORATOR COIL ADA 20 TON/25 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:13.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-003999",desc:"EVAPORATOR COIL ADB 25 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:9.0,qord:0.0,alloc:2.0,ss:0.0,forecast_values:[0.3,2.45,1.35,1.8,0.5,1.6,0.0,0.0,0.1,1.98,0.0,0.0,0.0,0.0,0.0],sched_demand:1.0},{item:"P-004000",desc:"EVAPORATOR COIL ADB 40 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:5.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004001",desc:"EVAPORATOR COIL ADB 50 TON/60 TON, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:10.0,qord:10.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:4.0},{item:"P-004002",desc:"ADA OUTDOOR COIL, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:5.0,alloc:0.0,ss:0.0,forecast_values:[2.49,1.85,0.0,0.8999999999999999,0.8,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004003",desc:"ADB OUTDOOR COIL, SRC",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,2.35,0.5,1.5,0.4,0.3,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004019",desc:"EVAP COIL ADB 25 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004020",desc:"EVAP COIL ADB 40, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004021",desc:"EVAP COIL ADB 50 TON/60 TON, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:1.0},{item:"P-004022",desc:"ADA OUTDOOR COIL, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004023",desc:"ADB OUTDOOR COIL, COATED, P",commodity:"Evaporator Coils",raw_commodity:"Evaporator Coils",lt:90.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004212",desc:"FAN, ECM, COPRA PA-C50-JQ56-C0000 - 460V",commodity:"Fans",raw_commodity:"Fans",lt:60.0,qoh:5.0,qord:54.0,alloc:5.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:9.0},{item:"P-004214",desc:"FAN, ECM, ROSENBERG E66-80671",commodity:"Fans",raw_commodity:"Fans",lt:90.0,qoh:23.0,qord:36.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-004312",desc:"FAN, ECM, ROSENBERG, E66-63642",commodity:"Fans",raw_commodity:"Fans",lt:120.0,qoh:0.0,qord:30.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0},{item:"P-HV0391",desc:"HOLE CAP VERTICAL",commodity:"Missing Commodity",raw_commodity:"Fabrication",lt:60.0,qoh:0.0,qord:0.0,alloc:0.0,ss:0.0,forecast_values:[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],sched_demand:0.0}]};
+var COMM_ORDER = ["Compressor", "Fans", "Evaporator Coils", "Micro Channel Coils", "Liquid Desiccant", "VFD", "Missing Commodity"];
+var COMM_MAP = {
+  'Compressor':['compressor'],'Fans':['fans','fan'],
+  'Evaporator Coils':['evaporator coil','evap co'],
+  'Micro Channel Coils':['micro channel','xcond','regen coil'],
+  'Liquid Desiccant':['liquid desiccant','salt'],'VFD':['vfd']
+};
+var pendingFiles = {};
+var hiddenItems = new Set(JSON.parse(localStorage.getItem('mojave-hidden-rows')||'[]'));
+function saveHidden(){localStorage.setItem('mojave-hidden-rows',JSON.stringify([...hiddenItems]));}
+var manualDemand = JSON.parse(localStorage.getItem('mojave-manual-demand')||'{}');
+var commSort = JSON.parse(localStorage.getItem('mojave-sort')||'{}');
+function setSort(sid,val){commSort[sid]=val;localStorage.setItem('mojave-sort',JSON.stringify(commSort));renderComm(COMM_ORDER.find(function(c){return c.toLowerCase().replace(/[^a-z0-9]+/g,'-')===sid;}));}
+function saveManual(){localStorage.setItem('mojave-manual-demand',JSON.stringify(manualDemand));}
+function setManual(item,val){
+  var n=parseFloat(val)||0;
+  if(n===0) delete manualDemand[item]; else manualDemand[item]=n;
+  saveManual();
+  renderComm('Liquid Desiccant');
+}
+var newPartsBuffer = [];
+
+function normComm(commDesc) {
+  var d=(commDesc||'').toLowerCase();
+  for(var comm in COMM_MAP) {
+    var aliases=COMM_MAP[comm];
+    for(var i=0;i<aliases.length;i++) { if(d.indexOf(aliases[i])>=0) return comm; }
+  }
+  return 'Missing Commodity';
+}
+
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('panel-'+id).classList.add('active');
+}
+function toggleUpload(){
+  var p=document.getElementById('upload-panel');
+  var b=document.getElementById('upload-toggle-btn');
+  var open=p.classList.toggle('open');
+  b.textContent=open?'✕ Close':'⬆ Upload Files';
+}
+function hideRow(btn){
+  var row=btn.closest('tr'),sid=row.closest('table').id.replace('tbl-','');
+  var item=row.getAttribute('data-item');
+  if(item){hiddenItems.add(item);saveHidden();}
+  row.style.display='none';
+  document.getElementById('restore-'+sid).style.display='';
+}
+function restoreRows(sid){
+  var tbl=document.getElementById('tbl-'+sid);
+  tbl.querySelectorAll('tr').forEach(function(r){
+    var item=r.getAttribute('data-item');
+    if(item) hiddenItems.delete(item);
+    r.style.display='';
+  });
+  saveHidden();
+  document.getElementById('restore-'+sid).style.display='none';
+}
+function csvQ(v){v=String(v===null||v===undefined?'':v);return(v.includes(',')||v.includes('"')||v.includes('\n'))?'"'+v.replace(/"/g,'""')+'"':v;}
+function numOrBlank(v){return(!v||v===0)?'':v;}
+function downloadCSV(sid,commName){
+  var isLD=commName==='Liquid Desiccant';
+  var isMissing=commName==='Missing Commodity';
+  var periodCols=DASH.showIdx.map(function(i){return fmtPeriod(DASH.periods[i]);});
+  // Header
+  var hdr=['Part #','Description'];
+  if(isMissing)hdr.push('Commodity');
+  hdr=hdr.concat(periodCols,['Forecast Total','Scheduled Demand']);
+  if(isLD)hdr.push('Manual Demand');
+  hdr=hdr.concat(['Total Demand','QOH','Qty Ordered','Surplus/(Short)']);
+  var lines=[hdr.map(csvQ).join(',')];
+  // Data from DASH — same sort as table
+  var sortKey=commSort[sid]||'desc-asc';
+  var parts=DASH.parts.filter(function(p){return p.commodity===commName&&!hiddenItems.has(p.item);})
+    .sort(function(a,b){
+      if(sortKey==='desc-desc')return(b.desc||'').localeCompare(a.desc||'');
+      if(sortKey==='part')return(a.item||'').localeCompare(b.item||'');
+      if(sortKey==='shortage'){return surplusV(a,isLD)-surplusV(b,isLD);}
+      if(sortKey==='surplus'){return surplusV(b,isLD)-surplusV(a,isLD);}
+      return(a.desc||'').localeCompare(b.desc||'');
+    });
+  parts.forEach(function(p){
+    var f6=fcst6(p),sc=schedD(p),man=isLD?(manualDemand[p.item]||0):0,d6=dem6(p,isLD),surp=surplusV(p,isLD);
+    var row=[p.item,p.desc];
+    if(isMissing)row.push(p.raw_commodity||'');
+    DASH.showIdx.forEach(function(i){row.push(numOrBlank(p.forecast_values[i]));});
+    row.push(numOrBlank(f6),numOrBlank(sc));
+    if(isLD)row.push(numOrBlank(man));
+    row.push(numOrBlank(d6),numOrBlank(p.qoh),numOrBlank(p.qord));
+    row.push(d6===0?'':(surp<0?'('+Math.abs(surp).toFixed(2)+')':'+'+surp.toFixed(2)));
+    lines.push(row.map(csvQ).join(','));
+  });
+  // Totals row
+  var totF=parts.reduce(function(s,p){return s+fcst6(p);},0);
+  var totSc=parts.reduce(function(s,p){return s+schedD(p);},0);
+  var totMan=isLD?parts.reduce(function(s,p){return s+(manualDemand[p.item]||0);},0):0;
+  var totD=totF+totSc+totMan;
+  var totQoh=parts.reduce(function(s,p){return s+(p.qoh||0);},0);
+  var totQord=parts.reduce(function(s,p){return s+(p.qord||0);},0);
+  var totSurp=(totQoh+totQord)-totD;
+  var totMo=DASH.showIdx.map(function(i){return parts.reduce(function(s,p){return s+(p.forecast_values[i]||0);},0);});
+  var totRow=['TOTALS ('+parts.length+' parts)',''];
+  if(isMissing)totRow.push('');
+  totRow=totRow.concat(totMo.map(function(v){return numOrBlank(v);}));
+  totRow.push(numOrBlank(totF),numOrBlank(totSc));
+  if(isLD)totRow.push(numOrBlank(totMan));
+  totRow.push(numOrBlank(totD),numOrBlank(totQoh),numOrBlank(totQord));
+  totRow.push(totSurp<0?'('+Math.abs(totSurp).toFixed(2)+')':'+'+totSurp.toFixed(2));
+  lines.push(totRow.map(csvQ).join(','));
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download=commName.replace(/\s+/g,'-')+'-forecast.csv';a.click();
+}
+function downloadAllCSV(){
+  COMM_ORDER.forEach(function(c,i){setTimeout(function(){
+    var sid=c.toLowerCase().replace(/[^a-z0-9]+/g,'-');downloadCSV(sid,c);
+  },350*i);});
+}
+
+function detectType(name){
+  if(/items.long.lead/i.test(name)||/ToExcel_Items/i.test(name)||/^items/i.test(name)||/long.lead.items/i.test(name)) return 'items';
+  if(/crm.demand/i.test(name)||/crm demand/i.test(name)) return 'crm';
+  if(/planningdetail/i.test(name)||/planning.detail/i.test(name)||/ToExcel_Planning/i.test(name)) return 'planning';
+  return null;
+}
+var typeLabels={'items':'Items CSV','crm':'CRM XLSX','planning':'Planning CSV'};
+
+function handleDrop(e){
+  e.preventDefault();document.getElementById('drop-zone').classList.remove('drag-over');handleFiles(e.dataTransfer.files);
+}
+function handleFiles(files){
+  Array.from(files).forEach(function(file){
+    var type=detectType(file.name);
+    pendingFiles[file.name]={file:file,type:type,state:'pending'};
+  });
+  renderFileStatus();
+  var hasFiles=Object.keys(pendingFiles).length>0;
+  document.getElementById('process-btn').className='process-btn'+(hasFiles?' visible':'');
+}
+function renderFileStatus(){
+  var list=document.getElementById('file-status-list');
+  list.innerHTML=Object.entries(pendingFiles).map(function(e){
+    var name=e[0],info=e[1];
+    var typeLabel=info.type?typeLabels[info.type]:'Unknown — will skip';
+    var stateText={pending:'Ready',processing:'Processing…',success:'Updated ✓',error:'Error'};
+    return '<div class="file-status '+info.state+'"><span class="fs-icon"></span>'+
+      '<span class="fs-name" title="'+name+'">'+name+'</span>'+
+      '<span class="fs-type">'+typeLabel+'</span>'+
+      '<span class="fs-state">'+stateText[info.state]+'</span></div>';
+  }).join('');
+}
+
+async function parseUTF16TSV(file){
+  var buf=await file.arrayBuffer(),bytes=new Uint8Array(buf),text;
+  if(bytes[0]===0xff&&bytes[1]===0xfe) text=new TextDecoder('utf-16le').decode(buf.slice(2));
+  else text=new TextDecoder('utf-8').decode(buf);
+  var lines=text.replace(/\r/g,'').split('\n');
+  var headers=lines[0].split('\t').map(function(h){return h.trim();});
+  return lines.slice(1).filter(function(l){return l.trim();}).map(function(line){
+    var vals=line.split('\t'),obj={};
+    headers.forEach(function(h,i){obj[h]=(vals[i]||'').replace(/^"|"$/g,'').trim();});
+    return obj;
+  });
+}
+
+async function processAllFiles(){
+  var btn=document.getElementById('process-btn');
+  btn.textContent='Processing…';btn.disabled=true;
+  newPartsBuffer=[];
+  document.getElementById('new-parts-alert').className='new-parts-alert';
+  for(var name in pendingFiles){
+    var info=pendingFiles[name];
+    if(!info.type){info.state='error';continue;}
+    info.state='processing';renderFileStatus();
+    try{
+      if(info.type==='items') await applyItems(info.file);
+      else if(info.type==='crm') await applyCRM(info.file);
+      else if(info.type==='planning') await applyPlanning(info.file);
+      info.state='success';
+    }catch(err){info.state='error';console.error(name,err);}
+    renderFileStatus();
+  }
+  if(newPartsBuffer.length>0){newPartsBuffer.forEach(function(p){DASH.parts.push(p);});showNewPartsToast(newPartsBuffer.length);newPartsBuffer=[];}
+  renderAll();
+  var ts=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('last-updated').textContent='Updated: '+ts+' (live)';
+  btn.textContent='✓ Dashboard Updated';
+  setTimeout(function(){btn.textContent='⚡ Update Dashboard';btn.disabled=false;},3000);
+}
+
+async function applyItems(file){
+  var rows;
+  if(/\.xlsx$/i.test(file.name)){
+    var buf=await file.arrayBuffer();
+    var wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];
+    rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    rows.forEach(function(r){if(r.Item!==undefined)r.Item=String(r.Item).trim();});
+  } else {
+    rows=await parseUTF16TSV(file);
+  }
+  var map={};rows.forEach(function(r){if(r.Item)map[r.Item]=r;});
+  var toF=function(v){return parseFloat((v||'0').replace(/,/g,''))||0;};
+  var existingItems=new Set(DASH.parts.map(function(p){return p.item;}));
+
+  // Update existing parts
+  DASH.parts.forEach(function(p){
+    var r=map[p.item];if(!r)return;
+    p.qoh=toF(r['Quantity On Hand']);p.qord=toF(r['Quantity Ordered']);
+    p.alloc=toF(r['Allocated To Prod']);p.ss=toF(r['Safety Stock']);
+  });
+
+  // Detect new eligible parts
+  rows.forEach(function(r){
+    var item=(r.Item||'').trim();
+    if(!item||existingItems.has(item)) return;
+    var lt=toF(r['Lead Time']);
+    if(lt<=59) return;
+    var desc=(r.Description||'').trim();
+    var obs=desc.toUpperCase().startsWith('OBS');
+    if(obs) return;
+    var comm=normComm(r['Commodity Description']||'');
+    newPartsBuffer.push({
+      item:item,desc:desc,commodity:comm,
+      raw_commodity:(r['Commodity Description']||'').trim(),
+      lt:lt,
+      qoh:toF(r['Quantity On Hand']),qord:toF(r['Quantity Ordered']),
+      alloc:toF(r['Allocated To Prod']),ss:toF(r['Safety Stock']),
+      forecast_values:new Array(DASH.periods.length).fill(0),
+      sched_demand:0
+    });
+  });
+}
+
+function showNewPartsToast(count){
+  var t=document.createElement('div');t.style.cssText='position:fixed;bottom:24px;right:24px;background:#16a34a;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:9999';t.textContent='✅ '+count+' new part'+(count>1?'s':'')+' added to dashboard';document.body.appendChild(t);setTimeout(function(){t.remove();},4000);
+}
+
+
+async function applyCRM(file){
+  var buf=await file.arrayBuffer();
+  var wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets['Parts Forecast'];
+  var aoa=XLSX.utils.sheet_to_json(ws,{header:1});
+  var periodRow=aoa[2]||[],newPeriods=[];
+  for(var c=3;c<periodRow.length;c++){if(periodRow[c])newPeriods.push(String(periodRow[c]));else break;}
+  var n=newPeriods.length;DASH.periods=newPeriods;
+  var pFcst={},erpFcst={};
+  for(var i=3;i<aoa.length;i++){
+    var row=aoa[i],pNum=String(row[1]||'').trim(),erpRaw=row[2];
+    if(pNum.startsWith('P-')){
+      if(!pFcst[pNum])pFcst[pNum]=new Array(n).fill(0);
+      for(var c2=0;c2<n;c2++)pFcst[pNum][c2]+=parseFloat(row[3+c2]||0)||0;
+    }
+    if(erpRaw&&typeof erpRaw==='number'){
+      var erpStr=String(Math.round(erpRaw));
+      if(!erpFcst[erpStr])erpFcst[erpStr]=new Array(n).fill(0);
+      for(var c3=0;c3<n;c3++)erpFcst[erpStr][c3]+=parseFloat(row[3+c3]||0)||0;
+    }
+  }
+  DASH.parts.forEach(function(p){
+    var vals=pFcst[p.item]||erpFcst[p.item];
+    if(vals)p.forecast_values=vals;
+    else{while(p.forecast_values.length<n)p.forecast_values.push(0);p.forecast_values=p.forecast_values.slice(0,n);}
+  });
+}
+
+async function applyPlanning(file){
+  var rows=await parseUTF16TSV(file);
+  var TODAY=new Date(),toF=function(v){return parseFloat((v||'0').replace(/,/g,''))||0;};
+  var outstd={};
+  rows.forEach(function(r){
+    var item=(r.Item||'').trim(),req=toF(r['Outstanding Requirement']);
+    if(!req||req<=0)return;
+    if(item.startsWith('P-')){outstd[item]=(outstd[item]||0)+req;}
+    else if(/^\d+$/.test(item)){
+      var pts=(r.Date||'').split('/'),d=new Date(parseInt(pts[2]),parseInt(pts[0])-1,parseInt(pts[1]));
+      if(d>=TODAY)outstd[item]=(outstd[item]||0)+req;
+    }
+  });
+  outstd['P-002488']=7.0;
+  DASH.parts.forEach(function(p){if(outstd[p.item]!==undefined)p.sched_demand=outstd[p.item];});
+}
+
+// ── Date range ─────────────────────────────────────────────
+var MON={1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'};
+function fmtPeriod(s){var p=s.split('-');return(MON[parseInt(p[0])]||p[0])+'-'+p[1].slice(2);}
+function toISODate(d){return d.toISOString().slice(0,10);}
+function calcShowIdx(startDate,days){
+  var endDate=new Date(startDate.getTime()+days*86400000);
+  var idx=[];
+  DASH.periods.forEach(function(period,i){
+    var parts=period.split('-'),m=parseInt(parts[0]),y=parseInt(parts[1]);
+    var pStart=new Date(y,m-1,1),pEnd=new Date(y,m,1);
+    if(pStart<endDate&&pEnd>startDate)idx.push(i);
+  });
+  return idx;
+}
+function applyDateRange(){
+  var startVal=document.getElementById('range-start').value;
+  var days=parseInt(document.getElementById('range-days').value)||120;
+  if(!startVal)return;
+  var start=new Date(startVal+'T00:00:00');
+  var end=new Date(start.getTime()+days*86400000);
+  DASH.showIdx=calcShowIdx(start,days);
+  localStorage.setItem('mojave-range',JSON.stringify({start:startVal,days:days}));
+  // Update subtitle
+  var fmt=function(d){return MON[d.getMonth()+1]+' '+d.getFullYear();};
+  document.getElementById('range-subtitle').textContent=fmt(start)+' – '+fmt(end)+' ('+days+' days)';
+  renderAll();
+}
+function initDateRange(){
+  var saved=JSON.parse(localStorage.getItem('mojave-range')||'null');
+  var today=new Date();
+  var startVal=saved?saved.start:toISODate(today);
+  var days=saved?saved.days:120;
+  document.getElementById('range-start').value=startVal;
+  document.getElementById('range-days').value=days;
+  applyDateRange();
+}
+
+// ── Re-render ──────────────────────────────────────────────
+function fmtV(v){if(!v||v===0)return'—';return(Number.isInteger(v)||v===Math.floor(v))?String(Math.floor(v)):v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function fmtI(v){if(!v||v===0)return'—';return Math.floor(v).toLocaleString();}
+function fcst6(p){return DASH.showIdx.reduce(function(s,i){return s+(p.forecast_values[i]||0);},0);}
+function schedD(p){return p.sched_demand||0;}
+function dem6(p,isLD){var m=isLD?(manualDemand[p.item]||0):0;return fcst6(p)+schedD(p)+m;}
+function avail(p){return(p.qoh||0)+(p.qord||0);}
+function surplusV(p,isLD){return avail(p)-dem6(p,isLD);}
+
+function renderComm(comm){
+  var sid=comm.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+  var isMissing=comm==='Missing Commodity';
+  var isLD=comm==='Liquid Desiccant';
+  var sortKey=commSort[sid]||'desc-asc';
+  var parts=DASH.parts.filter(function(p){return p.commodity===comm;})
+    .sort(function(a,b){
+      if(sortKey==='desc-asc') return(a.desc||'').localeCompare(b.desc||'');
+      if(sortKey==='desc-desc') return(b.desc||'').localeCompare(a.desc||'');
+      if(sortKey==='part') return(a.item||'').localeCompare(b.item||'');
+      if(sortKey==='shortage'){var sa=surplusV(a,isLD),sb=surplusV(b,isLD);return sa-sb;}
+      if(sortKey==='surplus'){var sa=surplusV(a,isLD),sb=surplusV(b,isLD);return sb-sa;}
+      return 0;
+    });
+  var rows=parts.map(function(p){
+    var f6=fcst6(p),sc=schedD(p),man=isLD?(manualDemand[p.item]||0):0,d6=dem6(p,isLD),av=avail(p),surp=surplusV(p,isLD);
+    var short=d6>0&&surp<0;
+    var moCells=DASH.showIdx.map(function(i){
+      var v=p.forecast_values[i]||0;
+      return v>0?'<td class="fcst-cell">'+fmtV(v)+'</td>':'<td class="fcst-cell zero">—</td>';
+    }).join('');
+    var surpTd=d6===0?'<td class="num zero">—</td>':
+      short?'<td class="shortage-val">('+fmtV(Math.abs(surp))+')</td>':
+            '<td class="surplus-val">+'+fmtV(surp)+'</td>';
+    var desc=(p.desc||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    var commCell=isMissing?'<td class="comm-cell" title="'+(p.raw_commodity||'')+'">'+((p.raw_commodity)||'—')+'</td>':'';
+    var manualCell=isLD?'<td class="col-manual"><input class="manual-input" type="number" min="0" step="any" value="'+(man||'')+'" placeholder="0" onchange="setManual(\''+p.item+'\',this.value)" title="Manual demand for '+p.item+'"></td>':'';
+    return '<tr class="'+(short?'shortage':'')+'" data-item="'+p.item+'">'+
+      '<td class="del-cell"><button class="del-btn" onclick="hideRow(this)">✕</button></td>'+
+      '<td class="part-num">'+p.item+'</td><td class="desc-cell" title="'+desc+'">'+desc+'</td>'+
+      commCell+moCells+
+      '<td class="total-fcst">'+(f6>0?fmtV(f6):'—')+'</td>'+
+      '<td class="sched-cell">'+(sc>0?fmtV(sc):'—')+'</td>'+
+      manualCell+
+      '<td class="dem-total">'+(d6>0?fmtV(d6):'—')+'</td>'+
+      '<td class="num">'+fmtI(p.qoh)+'</td><td class="num">'+fmtI(p.qord)+'</td>'+surpTd+'</tr>';
+  });
+  var totF=parts.reduce(function(s,p){return s+fcst6(p);},0);
+  var totSc=parts.reduce(function(s,p){return s+schedD(p);},0);
+  var totMan=isLD?parts.reduce(function(s,p){return s+(manualDemand[p.item]||0);},0):0;
+  var totD=totF+totSc+totMan,totQoh=parts.reduce(function(s,p){return s+(p.qoh||0);},0);
+  var totQord=parts.reduce(function(s,p){return s+(p.qord||0);},0);
+  var totSurp=(totQoh+totQord)-totD;
+  var totMo=DASH.showIdx.map(function(i){return parts.reduce(function(s,p){return s+(p.forecast_values[i]||0);},0);});
+  var surpDisp=totSurp<0?'<span class="shortage-val">('+fmtV(Math.abs(totSurp))+')</span>':'<span class="surplus-val">+'+fmtV(totSurp)+'</span>';
+  var commTotalCell=isMissing?'<td></td>':'';
+  var manTotalCell=isLD?'<td class="col-manual" style="text-align:right;font-weight:700;color:#5b21b6">'+(totMan>0?fmtV(totMan):'—')+'</td>':'';
+  rows.push('<tr class="totals-row"><td class="del-cell"></td><td colspan="2">TOTALS ('+parts.length+' parts)</td>'+
+    commTotalCell+totMo.map(function(v){return'<td class="fcst-cell total-row-num">'+(v>0?fmtV(v):'—')+'</td>';}).join('')+
+    '<td class="total-fcst total-row-num">'+fmtV(totF)+'</td>'+
+    '<td class="sched-cell total-row-num">'+(totSc>0?fmtV(totSc):'—')+'</td>'+
+    manTotalCell+
+    '<td class="dem-total total-row-num">'+fmtV(totD)+'</td>'+
+    '<td class="num total-row-num">'+fmtI(totQoh)+'</td><td class="num total-row-num">'+fmtI(totQord)+'</td>'+
+    '<td class="total-row-num">'+surpDisp+'</td></tr>');
+  var tbl=document.getElementById('tbl-'+sid);
+  if(tbl){
+    // Rebuild thead with current periods
+    var n=DASH.showIdx.length;
+    var commHeadCell=isMissing?'<th rowspan="2" class="col-comm">Commodity</th>':'';
+    var manualHeadCell=isLD?'<th rowspan="2" class="col-manual" style="background:#ede9fe;color:#5b21b6;font-size:11px">Manual<br>Demand</th>':'';
+    var demLabel=n+'-Month<br>Demand';
+    var headRow1='<tr><th rowspan="2" class="col-del"></th><th rowspan="2" class="col-part">Part #</th><th rowspan="2" class="col-desc">Description</th>'+
+      commHeadCell+'<th colspan="'+n+'" class="group-head">Forecast Demand</th>'+
+      '<th rowspan="2" class="col-ftot">Forecast<br>Demand<br>Total</th>'+
+      '<th rowspan="2" class="col-sched">Scheduled<br>Demand</th>'+
+      manualHeadCell+
+      '<th rowspan="2" class="col-dem">'+demLabel+'</th>'+
+      '<th rowspan="2" class="col-qoh">QOH</th><th rowspan="2" class="col-qord">Qty<br>Ordered</th>'+
+      '<th rowspan="2" class="col-surp">Surplus /<br>(Short)</th></tr>';
+    var headRow2='<tr>'+DASH.showIdx.map(function(i){return'<th class="fcst-head">'+fmtPeriod(DASH.periods[i])+'</th>';}).join('')+'</tr>';
+    tbl.querySelector('thead').innerHTML=headRow1+headRow2;
+    tbl.querySelector('tbody').innerHTML=rows.join('');
+    // Inject sort select into toolbar if not already present
+    var toolbar=document.getElementById('tbl-wrap-'+sid) && document.getElementById('tbl-wrap-'+sid).previousElementSibling;
+    if(toolbar&&!document.getElementById('sort-'+sid)){
+      var sel=document.createElement('select');
+      sel.id='sort-'+sid;sel.className='sort-select';
+      sel.innerHTML='<option value="desc-asc">↑ A→Z Name</option><option value="desc-desc">↓ Z→A Name</option><option value="part">Part #</option><option value="shortage">Shortage First</option><option value="surplus">Surplus First</option>';
+      sel.value=sortKey;
+      sel.onchange=function(){setSort(sid,this.value);};
+      toolbar.insertBefore(sel,toolbar.firstChild);
+    } else if(document.getElementById('sort-'+sid)){
+      document.getElementById('sort-'+sid).value=sortKey;
+    }
+    var hadHidden=false;
+    tbl.querySelectorAll('tr[data-item]').forEach(function(r){
+      if(hiddenItems.has(r.getAttribute('data-item'))){r.style.display='none';hadHidden=true;}
+    });
+    if(hadHidden){var rb=document.getElementById('restore-'+sid);if(rb)rb.style.display='';}
+  }
+  var nShort=parts.filter(function(p){return dem6(p,isLD)>0&&surplusV(p,isLD)<0;}).length;
+  var totDem=parts.reduce(function(s,p){return s+dem6(p,isLD);},0);
+  var ps=document.getElementById('stat-parts-'+sid);if(ps)ps.textContent=parts.length;
+  var ds=document.getElementById('stat-dem-'+sid);if(ds)ds.textContent=fmtV(totDem)||'—';
+  var badge=document.getElementById('stat-badge-'+sid);
+  if(badge)badge.innerHTML=nShort>0?'<span class="badge-short">'+nShort+' shortage'+(nShort>1?'s':'')+'</span>':'<span class="badge-ok">No shortages</span>';
+  var tab=document.getElementById('tab-'+sid);
+  if(tab){if(nShort>0)tab.classList.add('warn');else tab.classList.remove('warn');}
+}
+function renderAll(){COMM_ORDER.forEach(renderComm);}
+document.addEventListener('DOMContentLoaded',function(){
+  initDateRange();
+});
+</script>
+</body>
+</html>
