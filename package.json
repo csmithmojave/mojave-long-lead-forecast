@@ -1,11 +1,14 @@
 {
-  "name": "mojave-long-lead-forecast",
+  "name": "mojave-demand-forecast",
   "version": "1.0.0",
-  "description": "Mojave HVAC long lead time parts forecast dashboard",
-  "dependencies": {
-    "serve": "^14.0.0"
-  },
+  "description": "Mojave HVAC Long Lead Demand Forecast Dashboard",
   "scripts": {
-    "start": "serve output -l $PORT"
+    "start": "npx serve . -l $PORT --no-clipboard"
+  },
+  "dependencies": {
+    "serve": "^14.2.3"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
