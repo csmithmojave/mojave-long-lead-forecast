@@ -886,6 +886,12 @@ function initDateRange(){
   }catch(e){console.log('[LS] Could not restore dash data:',e.message);}
   var saved=JSON.parse(localStorage.getItem('mojave-range')||'null');
   var today=new Date();
+  // Discard stale saved range (more than 7 days old)
+  if(saved&&saved.start){
+    var savedDate=new Date(saved.start);
+    var diff=(today-savedDate)/(1000*60*60*24);
+    if(diff>7){saved=null;}
+  }
   var startVal=saved?saved.start:toISODate(today);
   var days=saved?saved.days:120;
   document.getElementById('range-start').value=startVal;
